@@ -1,0 +1,15 @@
+[Unit]
+Description=Ruuvi Dashboard - Flask web UI
+After=network.target
+
+[Service]
+Type=simple
+User=ruuvi
+Group=ruuvi
+WorkingDirectory=/home/ruuvi/ruuvi
+ExecStart=/home/ruuvi/ruuvi/venv/bin/gunicorn --workers 2 --bind 0.0.0.0:5000 app:app
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

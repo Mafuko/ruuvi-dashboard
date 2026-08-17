@@ -1,0 +1,17 @@
+[Unit]
+Description=Ruuvi Dashboard - RuuviTag BLE collector
+After=bluetooth.target
+Wants=bluetooth.target
+
+[Service]
+Type=simple
+User=ruuvi
+Group=ruuvi
+WorkingDirectory=/home/ruuvi/ruuvi
+Environment=RUUVI_BLE_ADAPTER=bleak
+ExecStart=/home/ruuvi/ruuvi/venv/bin/python collector.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

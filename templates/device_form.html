@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ "Add device" if mode == "new" else "Edit device" }} - Ruuvi Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 flex items-center justify-center min-h-screen text-white">
+
+<div class="bg-gray-800 p-8 rounded-2xl shadow-lg w-96">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-xl font-bold">{{ "Add device" if mode == "new" else "Edit device" }}</h1>
+        <a href="/devices" class="text-blue-400 hover:underline text-sm">← Devices</a>
+    </div>
+
+    {% if error %}
+    <div class="bg-red-500 p-2 rounded mb-4 text-sm">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    <form method="POST">
+        {% if mode == "new" %}
+        <label class="block text-sm text-gray-400 mb-1">MAC address</label>
+        <input name="mac"
+               placeholder="AA:BB:CC:DD:EE:FF"
+               value="{{ form.mac }}"
+               class="w-full mb-4 p-2 rounded bg-gray-700 font-mono">
+        {% else %}
+        <label class="block text-sm text-gray-400 mb-1">MAC address</label>
+        <div class="w-full mb-4 p-2 rounded bg-gray-900 font-mono text-gray-400">{{ mac }}</div>
+        {% endif %}
+
+        <label class="block text-sm text-gray-400 mb-1">Name</label>
+        <input name="name"
+               placeholder="Living Room"
+               value="{{ form.name }}"
+               class="w-full mb-4 p-2 rounded bg-gray-700">
+
+        <label class="block text-sm text-gray-400 mb-1">Location</label>
+        <input name="location"
+               placeholder="Living Room"
+               value="{{ form.location }}"
+               class="w-full mb-6 p-2 rounded bg-gray-700">
+
+        <button class="w-full bg-blue-600 hover:bg-blue-500 p-2 rounded">
+            {{ "Add device" if mode == "new" else "Save changes" }}
+        </button>
+    </form>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ruuvi Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+
+<div class="max-w-4xl mx-auto p-4">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold">Ruuvi Dashboard</h1>
+        <div class="flex gap-4">
+            <a href="/history" class="text-blue-400 hover:underline">History</a>
+            <a href="/devices" class="text-blue-400 hover:underline">Devices</a>
+        </div>
+    </div>
+
+    <div class="grid gap-4 sm:grid-cols-2" id="sensor-grid">
+        {% for row in data %}
+        <a href="/sensor/{{ row.mac }}"
+           class="bg-gray-800 rounded-2xl p-4 shadow-lg hover:bg-gray-700 transition"
+           data-mac="{{ row.mac }}"
+           data-timestamp="{{ row.timestamp_iso }}">
+
+            <div class="flex justify-between items-center mb-2">
+                <h2 class="text-xl font-semibold">{{ row.name }}</h2>
+                <span class="text-sm text-gray-400 updated-ago">just now</span>
+            </div>
+
+            <div class="text-4xl font-bold">
+                <span class="js-temperature">{{ row.temperature|round(1) }}</span>°C
+            </div>
+
+            <div class="mt-3 text-sm text-gray-300 space-y-1">
+                <div>💧 <span class="js-humidity">{{ row.humidity|round(1) }}</span> %</div>
+                <div>🌡 <span class="js-pressure">{{ row.pressure|round(1) }}</span> hPa</div>
+                <div>🔋 <span class="js-battery">{{ row.battery|round(2) }}</span> V</div>
+            </div>
+
+        </a>
+        {% endfor %}
+    </div>
+
+    {% if not data %}
+    <p class="text-gray-400">No sensor data yet.</p>
+    {% endif %}
+</div>
+
+<script>
+function formatAgo(isoTimestamp) {
+    const seconds = Math.max(0, Math.floor((Date.now() - new Date(isoTimestamp).getTime()) / 1000));
+    if (seconds < 60) return `Updated ${seconds}s ago`;
+    if (seconds < 3600) return `Updated ${Math.floor(seconds / 60)}m ago`;
+    return `Updated ${Math.floor(seconds / 3600)}h ago`;
+}
+
+function tickAgoLabels() {
+    document.querySelectorAll('#sensor-grid a').forEach(card => {
+        card.querySelector('.updated-ago').textContent = formatAgo(card.dataset.timestamp);
+    });
+}
+
+async function refreshLatest() {
+    try {
+        const res = await fetch('/api/latest');
+        if (!res.ok) return;
+        const readings = await res.json();
+        readings.forEach(r => {
+            const card = document.querySelector(`#sensor-grid a[data-mac="${r.mac}"]`);
+            if (!card) return;
+            card.dataset.timestamp = r.timestamp;
+            card.querySelector('.js-temperature').textContent = r.temperature.toFixed(1);
+            card.querySelector('.js-humidity').textContent = r.humidity.toFixed(1);
+            card.querySelector('.js-pressure').textContent = r.pressure.toFixed(1);
+            card.querySelector('.js-battery').textContent = r.battery.toFixed(2);
+        });
+        tickAgoLabels();
+    } catch (e) {
+        console.error('Failed to refresh latest readings', e);
+    }
+}
+
+tickAgoLabels();
+setInterval(tickAgoLabels, 1000);
+setInterval(refreshLatest, 30000);
+</script>
+
+</body>
+</html>

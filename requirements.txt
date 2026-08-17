@@ -1,0 +1,4 @@
+flask
+werkzeug
+ruuvitag_sensor
+gunicorn

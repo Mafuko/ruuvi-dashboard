@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ name }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+
+<div class="max-w-4xl mx-auto p-4">
+
+    <div class="flex justify-between items-center mb-4">
+        <h1 class="text-2xl font-bold">{{ name }}</h1>
+        <a href="/" class="text-blue-400 hover:underline">← Back</a>
+    </div>
+
+    <div class="flex flex-wrap gap-2 mb-6">
+        {% for r in ranges %}
+        <a href="/sensor/{{ mac }}?range={{ r }}"
+           class="px-3 py-1 rounded {{ 'bg-blue-600' if r == selected_range else 'bg-gray-700 hover:bg-gray-600' }}">{{ r }}</a>
+        {% endfor %}
+    </div>
+
+    {% if not timestamps %}
+    <p class="text-gray-400 mb-4">No data in this range.</p>
+    {% endif %}
+
+    <div class="bg-gray-800 rounded-2xl p-4 shadow-lg">
+        <canvas id="chart"></canvas>
+    </div>
+
+</div>
+
+<script>
+const ctx = document.getElementById('chart');
+
+new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: {{ timestamps | safe }},
+        datasets: [
+            {
+                label: 'Temperature °C',
+                data: {{ temperatures | safe }},
+                borderColor: 'rgb(255,99,132)',
+                yAxisID: 'y',
+                tension: 0.3,
+                pointRadius: 0
+            },
+            {
+                label: 'Humidity %',
+                data: {{ humidities | safe }},
+                borderColor: 'rgb(54,162,235)',
+                yAxisID: 'y',
+                tension: 0.3,
+                pointRadius: 0
+            },
+            {
+                label: 'Pressure hPa',
+                data: {{ pressures | safe }},
+                borderColor: 'rgb(75,192,192)',
+                yAxisID: 'y1',
+                tension: 0.3,
+                pointRadius: 0
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        interaction: {
+            mode: 'index',
+            intersect: false
+        },
+        stacked: false,
+        scales: {
+            y: {
+                type: 'linear',
+                position: 'left',
+                ticks: { color: 'white' }
+            },
+            y1: {
+                type: 'linear',
+                position: 'right',
+                grid: { drawOnChartArea: false },
+                ticks: { color: 'white' }
+            },
+            x: {
+                display: false
+            }
+        },
+        plugins: {
+            legend: {
+                labels: { color: 'white' }
+            }
+        }
+    }
+});
+</script>
+
+</body>
+</html>

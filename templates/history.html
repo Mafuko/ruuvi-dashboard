@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>History - Ruuvi Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+
+<div class="max-w-5xl mx-auto p-4">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-2xl font-bold">History</h1>
+        <div class="flex gap-4">
+            <a href="/" class="text-blue-400 hover:underline">← Overview</a>
+            <a href="/devices" class="text-blue-400 hover:underline">Devices</a>
+        </div>
+    </div>
+
+    <div class="bg-gray-800 rounded-2xl p-4 shadow-lg mb-4 space-y-4">
+        <div>
+            <div class="text-sm text-gray-400 mb-2">Sensors</div>
+            <div class="flex flex-wrap gap-3" id="sensor-picker">
+                {% for device in devices %}
+                <label class="flex items-center gap-2 bg-gray-700 rounded px-3 py-1 cursor-pointer">
+                    <span class="color-swatch w-3 h-3 rounded-full inline-block"></span>
+                    <input type="checkbox" class="sensor-checkbox" value="{{ device.mac }}" checked>
+                    <span>{{ device.name }}</span>
+                </label>
+                {% endfor %}
+            </div>
+            {% if not devices %}
+            <p class="text-gray-400 text-sm">No sensors registered yet.</p>
+            {% endif %}
+        </div>
+
+        <div class="flex flex-wrap gap-6">
+            <div>
+                <div class="text-sm text-gray-400 mb-2">Measurement</div>
+                <div class="flex gap-2" id="metric-picker">
+                    <button data-metric="temperature" class="metric-btn px-3 py-1 rounded bg-blue-600">Temperature</button>
+                    <button data-metric="humidity" class="metric-btn px-3 py-1 rounded bg-gray-700">Humidity</button>
+                    <button data-metric="pressure" class="metric-btn px-3 py-1 rounded bg-gray-700">Pressure</button>
+                </div>
+            </div>
+
+            <div>
+                <div class="text-sm text-gray-400 mb-2">Range</div>
+                <div class="flex gap-2" id="range-picker">
+                    {% for r in ranges %}
+                    <button data-range="{{ r }}" class="range-btn px-3 py-1 rounded {{ 'bg-blue-600' if r == default_range else 'bg-gray-700' }}">{{ r }}</button>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-gray-800 rounded-2xl p-4 shadow-lg">
+        <canvas id="chart"></canvas>
+    </div>
+</div>
+
+<script>
+const COLORS = ['rgb(255,99,132)', 'rgb(54,162,235)', 'rgb(75,192,192)', 'rgb(255,205,86)', 'rgb(153,102,255)', 'rgb(255,159,64)'];
+const METRIC_UNITS = { temperature: '°C', humidity: '%', pressure: 'hPa' };
+
+const state = {
+    metric: 'temperature',
+    range: '{{ default_range }}'
+};
+
+const macColorIndex = {};
+document.querySelectorAll('.sensor-checkbox').forEach((cb, i) => {
+    macColorIndex[cb.value] = i;
+    const swatch = cb.closest('label').querySelector('.color-swatch');
+    swatch.style.backgroundColor = COLORS[i % COLORS.length];
+});
+
+const ctx = document.getElementById('chart');
+const chart = new Chart(ctx, {
+    type: 'line',
+    data: { datasets: [] },
+    options: {
+        responsive: true,
+        parsing: false,
+        interaction: { mode: 'nearest', intersect: false },
+        scales: {
+            x: {
+                type: 'linear',
+                ticks: {
+                    color: 'white',
+                    callback: (value) => new Date(value).toLocaleString([], { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                }
+            },
+            y: {
+                ticks: { color: 'white' }
+            }
+        },
+        plugins: {
+            legend: { labels: { color: 'white' } },
+            tooltip: {
+                callbacks: {
+                    title: (items) => new Date(items[0].parsed.x).toLocaleString()
+                }
+            }
+        }
+    }
+});
+
+async function reloadChart() {
+    const macs = Array.from(document.querySelectorAll('.sensor-checkbox:checked')).map(cb => cb.value);
+    if (macs.length === 0) {
+        chart.data.datasets = [];
+        chart.update();
+        return;
+    }
+
+    const params = new URLSearchParams({ macs: macs.join(','), metric: state.metric, range: state.range });
+    const res = await fetch('/api/history?' + params.toString());
+    if (!res.ok) return;
+    const body = await res.json();
+
+    chart.data.datasets = body.series.map(s => ({
+        label: s.name,
+        data: s.points.map(p => ({ x: Date.parse(p.t), y: p.v })),
+        borderColor: COLORS[macColorIndex[s.mac] % COLORS.length],
+        tension: 0.3,
+        pointRadius: 0
+    }));
+    chart.update();
+}
+
+function setActiveButton(buttons, active) {
+    buttons.forEach(b => {
+        b.classList.toggle('bg-blue-600', b === active);
+        b.classList.toggle('bg-gray-700', b !== active);
+    });
+}
+
+document.querySelectorAll('.sensor-checkbox').forEach(cb => cb.addEventListener('change', reloadChart));
+
+const metricButtons = Array.from(document.querySelectorAll('.metric-btn'));
+metricButtons.forEach(btn => btn.addEventListener('click', () => {
+    state.metric = btn.dataset.metric;
+    setActiveButton(metricButtons, btn);
+    reloadChart();
+}));
+
+const rangeButtons = Array.from(document.querySelectorAll('.range-btn'));
+rangeButtons.forEach(btn => btn.addEventListener('click', () => {
+    state.range = btn.dataset.range;
+    setActiveButton(rangeButtons, btn);
+    reloadChart();
+}));
+
+reloadChart();
+</script>
+
+</body>
+</html>

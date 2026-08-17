@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Devices - Ruuvi Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+
+<div class="max-w-5xl mx-auto p-4">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-2xl font-bold">Devices</h1>
+        <div class="flex gap-4 items-center">
+            <a href="/" class="text-blue-400 hover:underline">Overview</a>
+            <a href="/history" class="text-blue-400 hover:underline">History</a>
+            <a href="/devices/new" class="bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded">+ Add device</a>
+        </div>
+    </div>
+
+    <div class="bg-gray-800 rounded-2xl shadow-lg overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead class="text-gray-400 text-left border-b border-gray-700">
+                <tr>
+                    <th class="p-3">Name</th>
+                    <th class="p-3">Location</th>
+                    <th class="p-3">MAC</th>
+                    <th class="p-3">Status</th>
+                    <th class="p-3">Latest reading</th>
+                    <th class="p-3">Battery</th>
+                    <th class="p-3">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for device in devices %}
+                <tr class="border-b border-gray-700 last:border-0">
+                    <td class="p-3 font-medium">{{ device.name }}</td>
+                    <td class="p-3 text-gray-300">{{ device.location or "-" }}</td>
+                    <td class="p-3 text-gray-400 font-mono text-xs">{{ device.mac }}</td>
+                    <td class="p-3">
+                        {% if device.active %}
+                        <span class="bg-green-700 text-green-100 px-2 py-0.5 rounded text-xs">Active</span>
+                        {% else %}
+                        <span class="bg-gray-600 text-gray-300 px-2 py-0.5 rounded text-xs">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td class="p-3 text-gray-300">
+                        {% if device.temperature is not none %}
+                        {{ device.temperature|round(1) }}°C / {{ device.humidity|round(1) }}% / {{ device.pressure|round(1) }} hPa
+                        {% else %}
+                        <span class="text-gray-500">No data yet</span>
+                        {% endif %}
+                    </td>
+                    <td class="p-3 text-gray-300">
+                        {% if device.battery is not none %}
+                        {{ device.battery|round(2) }} V
+                        {% else %}
+                        <span class="text-gray-500">-</span>
+                        {% endif %}
+                    </td>
+                    <td class="p-3">
+                        <div class="flex gap-2 items-center">
+                            <a href="/devices/{{ device.mac }}/edit" class="text-blue-400 hover:underline">Edit</a>
+                            <form method="POST" action="/devices/{{ device.mac }}/toggle">
+                                <button type="submit" class="text-yellow-400 hover:underline">
+                                    {{ "Deactivate" if device.active else "Activate" }}
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if not devices %}
+    <p class="text-gray-400 mt-4">No devices registered yet. Add one to get started.</p>
+    {% endif %}
+</div>
+
+</body>
+</html>
