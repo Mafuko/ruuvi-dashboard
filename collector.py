@@ -32,19 +32,16 @@ async def main():
 
     logger.info("Collector running...")
 
-    def handle_data(found_data):
-        for mac, data in found_data.items():
-            if mac not in allowed_macs:
-                logger.warning(f"Unauthorized MAC: {mac} - skipping")
-                continue
-
-            try:
-                save_to_db(mac, data)
-            except Exception:
-                logger.exception(f"Failed to save reading from {mac} - skipping")
-
     # 3️⃣ Start receiving RuuviTag data
-    await RuuviTagSensor.get_data_async(handle_data)
+    async for mac, data in RuuviTagSensor.get_data_async():
+        if mac not in allowed_macs:
+            logger.warning(f"Unauthorized MAC: {mac} - skipping")
+            continue
+
+        try:
+            save_to_db(mac, data)
+        except Exception:
+            logger.exception(f"Failed to save reading from {mac} - skipping")
 
 if __name__ == "__main__":
     asyncio.run(main())
