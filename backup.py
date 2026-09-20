@@ -2,8 +2,11 @@ import gzip
 import logging
 import shutil
 import sqlite3
+import sys
 from datetime import datetime
 from pathlib import Path
+
+import db
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("backup")
@@ -85,5 +88,21 @@ def prune_old_backups(backup_dir, days, now):
     return deleted
 
 
+def main():
+    try:
+        gz_path = create_backup(db.DATABASE, BACKUP_DIR, datetime.now())
+        logger.info(f"Backup created: {gz_path}")
+    except Exception:
+        logger.exception("Backup failed")
+        sys.exit(1)
+
+    try:
+        deleted = prune_old_backups(BACKUP_DIR, RETENTION_DAYS, datetime.now())
+        for path in deleted:
+            logger.info(f"Pruned old backup: {path}")
+    except Exception:
+        logger.exception("Pruning failed")
+
+
 if __name__ == "__main__":
-    pass
+    main()
