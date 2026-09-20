@@ -6,37 +6,39 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Full product vision, target architecture, and phase-by-phase roadmap live in `RuuviTag_IoT_Project_Summary_EN.md` — read it for context on where this is headed. In short: a 24/7 RuuviTag (Bluetooth LE sensor) monitor meant to run on a Raspberry Pi 4, with a Flask dashboard exposed to the Internet via Cloudflare Tunnel.
 
-**The current code is an early, minimal implementation, not the target system.** All roadmap checkboxes in that file are still unchecked. Concretely, none of the following exist yet: `requirements.txt`, a `venv`, `static/` assets, systemd service files, Cloudflare Tunnel config, device/user management UI, alerts, CSV export, or an API. Don't assume a roadmap item is implemented — verify against the actual files first.
+The current code already implements a working collector, a multi-page dashboard (overview, per-sensor history, multi-sensor comparison, device management), and a `systemd` deployment path for the Pi — see `PROJECT_STATUS.md` for a living, phase-by-phase snapshot of what's done vs. still ahead (e.g. Cloudflare Tunnel, backups, alerts, CSV export, and a public API are not built yet). Don't assume a roadmap item is implemented — verify against the actual files first, and re-check `PROJECT_STATUS.md` if it's been a while since it was last updated.
 
 ## Running the app
 
+See `README.md` for the full first-time setup walkthrough (venv, `config.py`, `init_db.py`). Quick reference once set up:
+
 ```
-python init_db.py       # one-time: creates ruuvi.db with users/measurements/devices tables
-python create_user.py   # prompts for username/password, inserts a user row
+python init_db.py       # one-time: creates data/ruuvi.db with users/devices/measurements tables
+python create_user.py   # prompts for username/password, hashes it, inserts a row into `users`
 python app.py           # runs the Flask dashboard on 0.0.0.0:5000 (debug via config.py)
 python collector.py     # BLE collector: listens for RuuviTag broadcasts, writes to db
 ```
 
-Dependencies (inferred from imports, install via pip as needed — no `requirements.txt` yet): `flask`, `werkzeug`, `ruuvitag_sensor` (collector.py only — requires a BLE-capable host, typically Linux). There's no build system, test suite, or linter in this repo.
+Dependencies are pinned in `requirements.txt`: `flask`, `werkzeug`, `ruuvitag_sensor` (collector.py only — requires a BLE-capable host, typically Linux), `gunicorn` (production WSGI server for the dashboard, used by `systemd/ruuvi-dashboard.service`). There's no build system or linter in this repo. There is a small stdlib `unittest` suite for `backup.py` — run it with `python -m unittest discover -v`.
 
 ## Architecture
 
-- **app.py** — Flask web app. Two routes behind `@login_required` (session-based): `/` (dashboard grid of latest reading per sensor) and `/sensor/<mac>` (last-24h chart data for one sensor). `/login` and `/logout` handle session auth against a single admin credential pulled from `config.py`.
-- **collector.py** — standalone async script (not part of the Flask process), meant to run continuously (eventually as its own systemd service). Subscribes to `RuuviTagSensor.get_data_async` and writes each reading to the `measurements` table, filtering by `get_allowed_macs()` from `db.py` — device authorization is DB-driven, not a hardcoded MAC list.
-- **db.py** — the authoritative schema/connection module: `get_connection()` (sqlite3 with `Row` factory) and `init_db()` (creates `users`, `devices`, `measurements` tables if missing). Both `app.py` (indirectly, via queries) and `collector.py` depend on this module.
-- **init_db.py** — a standalone duplicate of the schema creation in `db.py` (older/manual variant, missing the `battery` column on `measurements`). Prefer `db.py`'s `init_db()` as the source of truth if the schema needs to change; update both if `init_db.py` is kept in sync intentionally.
-- **config.py** — currently only defines `DEBUG` and `DATABASE_PATH`. `app.py` also imports `SECRET_KEY`, `ADMIN_USERNAME`, and `ADMIN_PASSWORD_HASH` from this module, which are not currently defined there — these need to be added locally (and kept out of version control) before `app.py` will start. `DATABASE_PATH` in `config.py` is not currently wired up; `db.py` hardcodes its own path (`<repo>/ruuvi.db`) instead.
-- **create_user.py** — has a broken SQL statement (the values are inlined into the query string instead of using the `?` placeholders it also passes); needs fixing before it will run successfully.
-- **templates/** — server-rendered Jinja2 + Tailwind (via CDN) + Chart.js (via CDN, on the sensor detail page). No frontend build step. Only `index.html`, `login.html`, `sensor.html` exist so far (the roadmap's `dashboard.html`/`history.html`/`devices.html` split hasn't happened).
+- **app.py** — Flask web app, session-based auth via `@login_required`. Routes: `/` (overview grid of latest reading per sensor, auto-refreshed client-side from `/api/latest`), `/sensor/<mac>` (per-sensor chart with selectable range: 1h/6h/24h/7d/30d), `/history` + `/api/history` (overlay multiple sensors/metrics on one chart), `/devices`, `/devices/new`, `/devices/<mac>/edit`, `/devices/<mac>/toggle` (device management), `/login` and `/logout` (session auth checked against `ADMIN_USERNAME`/`ADMIN_PASSWORD_HASH` in `config.py`).
+- **collector.py** — standalone async script (not part of the Flask process), meant to run continuously (as its own systemd service — see `systemd/`). Subscribes to `RuuviTagSensor.get_data_async` and writes each reading to the `measurements` table, filtering by `get_allowed_macs()` from `db.py` — device authorization is DB-driven, not a hardcoded MAC list.
+- **db.py** — the authoritative schema/connection module: `get_connection()` (sqlite3 with `Row` factory), `init_db()` (creates `users`, `devices`, `measurements` tables plus an index on `measurements(mac, timestamp)` if missing), and `get_allowed_macs()`. Both `app.py` and `collector.py` depend on this module. `DATABASE_PATH` (from `config.py`) is resolved relative to the repo root here.
+- **init_db.py** — a thin wrapper that calls `db.init_db()`. `db.py` is the source of truth for the schema.
+- **config.py** — gitignored (holds secrets); copy from `config.example.py` to create it. Defines `DEBUG`, `DATABASE_PATH`, `SECRET_KEY`, `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`.
+- **create_user.py** — prompts for username/password, hashes the password with werkzeug, and inserts a row into `users` using parameterized SQL.
+- **templates/** — server-rendered Jinja2 + Tailwind (via CDN) + Chart.js (via CDN, on the sensor/history pages). No frontend build step. Files: `index.html`, `login.html`, `sensor.html`, `history.html`, `devices.html`, `device_form.html`.
+- **systemd/** — `ruuvi-collector.service`, `ruuvi-dashboard.service` (runs the app via `gunicorn`), and `ruuvi-backup.service`/`ruuvi-backup.timer` (daily, see below), plus `systemd/README.md` with a full Pi deployment walkthrough (service user, venv, secrets, install, verify, reboot test).
+- **backup.py** — daily local backup: takes a consistent snapshot of `data/ruuvi.db` via SQLite's backup API (not a raw file copy, since the collector may be writing concurrently), gzips it into `backups/`, and prunes anything older than 30 days. Runs via `systemd/ruuvi-backup.timer`. Covered by `tests/test_backup.py`.
 
 ## Data model
 
-Three tables in the sqlite3 database (`ruuvi.db`):
+Three tables in the sqlite3 database (`data/ruuvi.db`):
 - `users` — dashboard login credentials (`password_hash` via werkzeug).
-- `devices` — allow-list of sensor MAC addresses with display `name`, used both to label the dashboard and to filter which BLE MACs the collector will persist. The roadmap envisions adding `location` and `active` columns; they don't exist in the current schema.
-- `measurements` — time series of `mac, temperature, humidity, pressure, battery, timestamp` readings.
-
-`sensors` is referenced in `app.py`'s dashboard query (`JOIN sensors s ON m.mac = s.mac`) but the schema (in both `db.py` and `init_db.py`) only creates a `devices` table — the join target name is inconsistent with the actual table name.
+- `devices` — allow-list of sensor MAC addresses (`mac`, `name`, `location`, `active`), used both to label the dashboard and to filter which BLE MACs the collector will persist.
+- `measurements` — time series of `mac, temperature, humidity, pressure, battery, timestamp` readings, indexed on `(mac, timestamp)`.
 
 ## Development principles (from the project spec)
 

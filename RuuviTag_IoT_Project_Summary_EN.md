@@ -67,6 +67,8 @@ The collector should:
 
 The collector should no longer use a hardcoded `ALLOWED_MACS` list in `config.py`. Device authorization is managed through the database.
 
+**Known concern (found during Pi setup/testing):** `ruuvitag_sensor`'s `get_data_async()` yields a new event for every BLE advertisement it receives from any nearby device broadcasting Ruuvi-formatted data, not just registered ones. Since these devices broadcast every few seconds, an unauthorized/unregistered MAC nearby produces a continuous stream of `Unauthorized MAC: ... - skipping` warnings rather than a one-off notice. For a production version this should be throttled or reduced to debug-level logging (e.g. log a given unauthorized MAC once per some interval, not on every single advertisement). Also worth considering: `get_data_async()` accepts an optional `macs` argument that pre-filters at the library level — passing `list(allowed_macs)` directly would avoid receiving/processing unauthorized devices' data at all, instead of filtering manually after the fact.
+
 ### `db.py`
 
 Contains centralized SQLite database connection handling.
@@ -366,6 +368,7 @@ The structure can later be expanded with directories such as `services/`, `route
 - [ ] Store data only from active devices
 - [ ] Add error handling
 - [ ] Add logging
+- [ ] Throttle/reduce logging for repeated unauthorized-MAC warnings (or use `get_data_async(macs=...)` to filter at the library level)
 - [ ] Test continuous collector operation
 
 ### Phase 5 — Dashboard
