@@ -73,7 +73,36 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now ruuvi-collector.service ruuvi-dashboard.service
 ```
 
-## 8. Verify
+## 8. Install the daily backup timer
+
+```bash
+sudo cp /home/ruuvi/ruuvi/systemd/ruuvi-backup.service /home/ruuvi/ruuvi/systemd/ruuvi-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now ruuvi-backup.timer
+```
+
+This backs up `data/ruuvi.db` into `backups/` once a day (03:00), gzipped,
+keeping the last 30 days locally. `Persistent=true` means a missed run (Pi
+was off at 03:00) executes on next boot instead of being skipped.
+
+Verify it's scheduled:
+
+```bash
+sudo systemctl list-timers ruuvi-backup.timer
+```
+
+Trigger one manually to confirm it works end-to-end:
+
+```bash
+sudo systemctl start ruuvi-backup.service
+sudo systemctl status ruuvi-backup.service
+journalctl -u ruuvi-backup.service -n 20
+ls -la /home/ruuvi/ruuvi/backups/
+```
+
+Expect a `ruuvi-<today>.db.gz` file owned by `ruuvi:ruuvi`.
+
+## 9. Verify
 
 ```bash
 sudo systemctl status ruuvi-collector.service
@@ -84,7 +113,7 @@ journalctl -u ruuvi-dashboard.service -f
 
 The dashboard should be reachable at `http://<pi-ip>:5000`.
 
-## 9. Test restart-on-failure and boot survival
+## 10. Test restart-on-failure and boot survival
 
 ```bash
 sudo systemctl kill -s SIGKILL ruuvi-collector.service   # should restart within ~5s
@@ -96,8 +125,8 @@ sudo systemctl status ruuvi-collector.service ruuvi-dashboard.service
 ## Notes
 
 - If the deployment path or username differs from `/home/ruuvi/ruuvi` /
-  `ruuvi`, edit `WorkingDirectory`, `ExecStart`, `User`, and `Group` in both
-  `.service` files before copying them to `/etc/systemd/system/`.
+  `ruuvi`, edit `WorkingDirectory`, `ExecStart`, `User`, and `Group` in all
+  three `.service` files before copying them to `/etc/systemd/system/`.
 - The dashboard still binds `0.0.0.0:5000` (LAN-reachable) rather than
   `127.0.0.1` — intentional for now since Cloudflare Tunnel (Phase 9) isn't
   set up yet. Revisit this once it is.
