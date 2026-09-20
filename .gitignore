@@ -18,3 +18,6 @@ backups/*
 # Editor/OS
 .vscode/
 .DS_Store
+
+# Git worktrees (agent-managed, scratch)
+.worktrees/
