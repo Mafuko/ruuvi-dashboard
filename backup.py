@@ -48,5 +48,42 @@ def create_backup(source_db, backup_dir, when):
     return gz_path
 
 
+def _parse_backup_date(path):
+    """Extracts the date from a 'ruuvi-YYYY-MM-DD.db.gz' filename, or None if it doesn't match."""
+    prefix, suffix = "ruuvi-", ".db.gz"
+    name = path.name
+    if not (name.startswith(prefix) and name.endswith(suffix)):
+        return None
+    date_str = name[len(prefix):-len(suffix)]
+    try:
+        return datetime.strptime(date_str, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def prune_old_backups(backup_dir, days, now):
+    """Deletes backup_dir/ruuvi-*.db.gz files older than `days` days before `now`.
+
+    Returns the list of deleted paths. Unrecognized filenames are skipped (not
+    deleted). A failure deleting one file is logged and does not stop the rest.
+    """
+    deleted = []
+    for path in sorted(backup_dir.glob("ruuvi-*.db.gz")):
+        backup_date = _parse_backup_date(path)
+        if backup_date is None:
+            logger.warning(f"Skipping unrecognized backup filename: {path.name}")
+            continue
+
+        age_days = (now.date() - backup_date).days
+        if age_days > days:
+            try:
+                path.unlink()
+                deleted.append(path)
+            except OSError:
+                logger.exception(f"Failed to delete old backup: {path}")
+
+    return deleted
+
+
 if __name__ == "__main__":
     pass

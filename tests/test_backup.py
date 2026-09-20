@@ -64,5 +64,45 @@ class CreateBackupTests(unittest.TestCase):
         self.assertEqual(files, [])
 
 
+class PruneOldBackupsTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.backup_dir = Path(self.tmp.name)
+
+    def _touch_backup(self, date_str):
+        path = self.backup_dir / f"ruuvi-{date_str}.db.gz"
+        with gzip.open(path, "wb") as f:
+            f.write(b"fake")
+        return path
+
+    def test_prune_deletes_only_backups_older_than_retention(self):
+        old = self._touch_backup("2026-08-01")     # 49 days before "now"
+        recent = self._touch_backup("2026-09-10")  # 9 days before "now"
+        now = datetime(2026, 9, 19)
+
+        deleted = backup.prune_old_backups(self.backup_dir, days=30, now=now)
+
+        self.assertEqual(deleted, [old])
+        self.assertFalse(old.exists())
+        self.assertTrue(recent.exists())
+
+    def test_prune_ignores_files_that_dont_match_backup_naming(self):
+        stray = self.backup_dir / "notes.txt"
+        self.backup_dir.mkdir(parents=True, exist_ok=True)
+        stray.write_text("not a backup")
+        now = datetime(2026, 9, 19)
+
+        deleted = backup.prune_old_backups(self.backup_dir, days=30, now=now)
+
+        self.assertEqual(deleted, [])
+        self.assertTrue(stray.exists())
+
+    def test_prune_on_empty_directory_returns_empty_list(self):
+        now = datetime(2026, 9, 19)
+        deleted = backup.prune_old_backups(self.backup_dir, days=30, now=now)
+        self.assertEqual(deleted, [])
+
+
 if __name__ == "__main__":
     unittest.main()
