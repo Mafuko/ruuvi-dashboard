@@ -1,5 +1,6 @@
 import gzip
 import logging
+import os
 import shutil
 import sqlite3
 import sys
@@ -34,7 +35,7 @@ def create_backup(source_db, backup_dir, when):
     db_path = backup_dir / backup_filename(when)
     gz_path = backup_dir / (db_path.name + ".gz")
 
-    source_conn = sqlite3.connect(source_db)
+    source_conn = sqlite3.connect(source_db, timeout=30)
     try:
         dest_conn = sqlite3.connect(db_path)
         try:
@@ -44,9 +45,14 @@ def create_backup(source_db, backup_dir, when):
     finally:
         source_conn.close()
 
-    with open(db_path, "rb") as f_in, gzip.open(gz_path, "wb") as f_out:
-        shutil.copyfileobj(f_in, f_out)
-    db_path.unlink()
+    tmp_gz = backup_dir / (gz_path.name + ".tmp")
+    try:
+        with open(db_path, "rb") as f_in, gzip.open(tmp_gz, "wb") as f_out:
+            shutil.copyfileobj(f_in, f_out)
+        os.replace(tmp_gz, gz_path)
+    finally:
+        db_path.unlink(missing_ok=True)
+        tmp_gz.unlink(missing_ok=True)
 
     return gz_path
 

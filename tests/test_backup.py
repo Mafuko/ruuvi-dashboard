@@ -4,6 +4,7 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 import backup
 
@@ -34,6 +35,7 @@ class CreateBackupTests(unittest.TestCase):
         self.assertEqual(gz_path, self.backup_dir / "ruuvi-2026-09-19.db.gz")
         self.assertTrue(gz_path.exists())
         self.assertFalse((self.backup_dir / "ruuvi-2026-09-19.db").exists())
+        self.assertEqual(list(self.backup_dir.glob("*.tmp")), [])
 
         restored = self.tmp_path / "restored.db"
         with gzip.open(gz_path, "rb") as f_in, open(restored, "wb") as f_out:
@@ -62,6 +64,36 @@ class CreateBackupTests(unittest.TestCase):
         # Verify no backup file was created as a side effect
         files = list(self.backup_dir.glob("*"))
         self.assertEqual(files, [])
+
+    def test_create_backup_cleans_up_on_write_failure(self):
+        when = datetime(2026, 9, 19, 3, 0, 0)
+
+        with patch("backup.shutil.copyfileobj", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                backup.create_backup(self.source_db, self.backup_dir, when)
+
+        # No uncompressed .db leftover, no leftover .gz.tmp, and no partial/final
+        # .gz either -- a failed attempt must not leave anything behind that looks
+        # like (or could be mistaken for) a valid backup.
+        remaining = sorted(p.name for p in self.backup_dir.glob("*"))
+        self.assertEqual(remaining, [])
+
+    def test_create_backup_does_not_clobber_existing_gz_on_write_failure(self):
+        when = datetime(2026, 9, 19, 3, 0, 0)
+
+        # Establish a real, valid backup first.
+        good_gz = backup.create_backup(self.source_db, self.backup_dir, when)
+        original_contents = good_gz.read_bytes()
+
+        with patch("backup.shutil.copyfileobj", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                backup.create_backup(self.source_db, self.backup_dir, when)
+
+        # The pre-existing good backup must survive a failed re-attempt untouched.
+        self.assertTrue(good_gz.exists())
+        self.assertEqual(good_gz.read_bytes(), original_contents)
+        remaining = sorted(p.name for p in self.backup_dir.glob("*"))
+        self.assertEqual(remaining, [good_gz.name])
 
 
 class PruneOldBackupsTests(unittest.TestCase):
