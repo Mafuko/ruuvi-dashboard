@@ -24,6 +24,9 @@ def create_backup(source_db, backup_dir, when):
     written concurrently by the collector. Re-running with the same `when` overwrites
     the existing snapshot for that day instead of creating a duplicate.
     """
+    if not source_db.exists():
+        raise FileNotFoundError(f"Source database not found: {source_db}")
+
     backup_dir.mkdir(parents=True, exist_ok=True)
     db_path = backup_dir / backup_filename(when)
     gz_path = backup_dir / (db_path.name + ".gz")

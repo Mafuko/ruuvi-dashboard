@@ -52,6 +52,17 @@ class CreateBackupTests(unittest.TestCase):
         files = sorted(self.backup_dir.glob("ruuvi-2026-09-19.db*"))
         self.assertEqual(files, [self.backup_dir / "ruuvi-2026-09-19.db.gz"])
 
+    def test_create_backup_raises_on_missing_source_database(self):
+        when = datetime(2026, 9, 19, 3, 0, 0)
+        missing_db = self.tmp_path / "nonexistent.db"
+
+        with self.assertRaises(FileNotFoundError):
+            backup.create_backup(missing_db, self.backup_dir, when)
+
+        # Verify no backup file was created as a side effect
+        files = list(self.backup_dir.glob("*"))
+        self.assertEqual(files, [])
+
 
 if __name__ == "__main__":
     unittest.main()
