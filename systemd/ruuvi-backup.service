@@ -1,0 +1,10 @@
+[Unit]
+Description=Ruuvi Dashboard - daily database backup
+After=network.target
+
+[Service]
+Type=oneshot
+User=ruuvi
+Group=ruuvi
+WorkingDirectory=/home/ruuvi/ruuvi
+ExecStart=/home/ruuvi/ruuvi/venv/bin/python backup.py
