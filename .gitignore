@@ -21,3 +21,6 @@ backups/*
 
 # Git worktrees (agent-managed, scratch)
 .worktrees/
+
+# Brainstorming mockups (agent-managed, scratch)
+.superpowers/

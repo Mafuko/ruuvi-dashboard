@@ -1,6 +1,6 @@
 # Project Status
 
-Last reviewed: 2026-09-20. This is a working snapshot, not a permanent
+Last reviewed: 2026-10-26. This is a working snapshot, not a permanent
 record — re-check against actual code/files before trusting it if much time
 has passed, per the "don't assume, verify" principle in
 [CLAUDE.md](CLAUDE.md). Roadmap phase numbers refer to
@@ -48,9 +48,19 @@ deactivate). MAC input is validated and normalized server-side.
 **Phase 7 (systemd)** — unit files and a detailed deployment walkthrough
 exist (`systemd/ruuvi-collector.service`, `systemd/ruuvi-dashboard.service`,
 `systemd/README.md`), including a restricted `ruuvi` service user, `gunicorn`
-for the dashboard, and a reboot/restart-on-failure test procedure. Whether
-this has actually been run through end-to-end on the Pi isn't verifiable
-from the repo alone.
+for the dashboard, and a reboot/restart-on-failure test procedure.
+
+**Deviation found on the real Pi (2026-10-26):** the actual running
+deployment is under the regular login user (`mafuko`) at `/home/mafuko/ruuvi`,
+not the documented dedicated `ruuvi` service account at `/home/ruuvi/ruuvi`.
+This was carried over from an earlier manual setup (predating
+`systemd/README.md`'s current walkthrough) and the unit files installed on
+the Pi were hand-adapted (`User=`/`Group=`/paths) to match. It works, but is
+less isolated than intended — if the dashboard were ever compromised, it'd
+have the full permissions of a regular login account rather than a
+restricted one. Worth migrating to the documented `ruuvi` account if this Pi
+stays long-term, but not urgent. Phase 7's reboot/restart-on-failure test
+(README §10) has not yet been re-run against this corrected setup.
 
 **Phase 8 (security)** — partial. Passwords are hashed, sessions are
 Flask's signed cookies with a real `SECRET_KEY`, SQL is parameterized
@@ -64,12 +74,13 @@ the repo. The dashboard service still binds `0.0.0.0:5000` rather than
 `127.0.0.1` — `systemd/README.md` notes this is intentional until the
 tunnel exists, and should be revisited once it does.
 
-**Phase 10 (reliability)** — local daily backups done; the rest of the phase
-is not started. `backup.py` takes a consistent gzip snapshot of
-`data/ruuvi.db` via SQLite's backup API (never a raw file copy, since the
-collector may write concurrently) and prunes anything older than 30 days;
-`systemd/ruuvi-backup.timer` runs it daily. Not yet done: shipping backups
-off-Pi (`backups/` is local-only for now, by design — see
+**Phase 10 (reliability)** — local daily backups done and **confirmed
+running on the real Pi** (2026-10-26): manually triggered
+`ruuvi-backup.service` and it produced `ruuvi-2026-10-26.db.gz` in
+`backups/`, owned by the deployment user, `status=0/SUCCESS`. The timer
+itself (`ruuvi-backup.timer`, daily 03:00) is enabled and scheduled. Rest of
+the phase not started: shipping backups off-Pi (`backups/` is local-only for
+now, by design — see
 `docs/superpowers/specs/2026-09-19-database-backups-design.md`), a
 documented/scripted restore procedure, alerting if backups stop succeeding,
 health checks, and SD card/temperature monitoring.
@@ -86,22 +97,75 @@ actually needed, or was `users` premature scaffolding for something the
 single-admin model already covers? If multi-user login is wanted, `/login`
 needs to look the username up in `users` instead of `config.py`.
 
+## Bug found during Pi re-deployment (2026-10-26): new devices need a collector restart
+
+`collector.py` loads the allowed-MAC list into memory once at startup
+(`allowed_macs = get_allowed_macs()`) and never re-reads it. Adding a device
+via the dashboard while the collector is already running has no effect
+until `sudo systemctl restart ruuvi-collector.service` runs — until then the
+new MAC's broadcasts are logged as `Unauthorized MAC ... skipping` even
+though the device row now exists and is active. This isn't documented
+anywhere and should actually be fixed (e.g. reload the allowed-MAC set
+periodically, or re-query it per batch/callback) rather than just worked
+around.
+
+## Dashboard UX gaps noticed during real-world use (2026-10-26) — done
+
+Fixed on branch `dashboard-ux-gaps` (overview page only):
+
+1. Cards lead with **Location** as the heading, device Name smaller below
+   (falls back to Name as heading when no location is set).
+2. **Low-battery indicator**: the battery pill (bottom-right) turns amber
+   with "Low", using Ruuvi Station's temperature-aware thresholds in
+   `battery.py` (<2.5 V at ≥0 °C, <2.3 V down to −20 °C, <2.0 V below),
+   covered by `tests/test_battery.py`. Also fixed the battery display: the
+   library reports millivolts, which the old card printed as e.g.
+   "2995.00 V"; it now shows "3.00 V".
+3. **Stale-data indicator**: a card with no reading for over 1 hour fades to
+   gray and shows an amber "No data · Nh" (or "Nd") tag. Computed in the
+   browser, so it updates live while the page is open.
+
+Not covered: the per-sensor and Devices pages don't show these indicators;
+user-configurable thresholds belong to per-device alerting (below).
+
+## Feature request: per-device alerting (2026-10-26)
+
+Not built yet — this is the roadmap's "alerts" item, still unscoped beyond
+this note. Requested shape:
+
+- Configurable per device: pick which collected metric it's based on
+  (temperature, humidity, pressure, battery) and a threshold for when it
+  should alert.
+- Visual: an alerting device should be highlighted on the **Overview** page.
+- Notification: the Pi itself should push some kind of notification out
+  (not just a passive dashboard highlight) when a device is alerting —
+  mechanism (push service, email, something else) still to be decided.
+
+Needs a brainstorming/design pass before implementation (schema for
+thresholds, where the check runs — collector vs. a separate checker,
+notification delivery mechanism, etc.).
+
 ## Suggested next steps
 
 Roughly in order of what unblocks real-world use vs. what's polish:
 
-1. **Decide the collector's log-spam fix** — throttle unauthorized-MAC
+1. **Fix the collector reload bug above** — new devices should start being
+   collected without a manual service restart.
+2. **Decide the collector's log-spam fix** — throttle unauthorized-MAC
    warnings or switch to `get_data_async(macs=...)`. Already scoped in the
    roadmap; small, contained change.
-2. **Resolve the login/`users` table gap above** before building anything
+3. **Resolve the login/`users` table gap above** before building anything
    else on top of auth.
-3. **CSRF protection** on the device-management and login forms — needed
+4. **CSRF protection** on the device-management and login forms — needed
    before this is Internet-facing at all (Phase 8).
-4. **Cloudflare Tunnel** (Phase 9) — the actual "expose to the Internet"
-   step; do this only after #3.
-5. Confirm the backup timer actually runs on the Pi as documented
-   (`systemd/README.md` §8) — deployed from this repo's history but not yet
-   confirmed running on real hardware. Ship backups off-Pi as a follow-up
-   once local backups are confirmed working.
-6. Confirm Phase 7's reboot/restart-on-failure test has actually been run
-   on the Pi, if it hasn't already.
+5. **Cloudflare Tunnel** (Phase 9) — the actual "expose to the Internet"
+   step; do this only after #4.
+6. ~~Dashboard UX gaps~~ — done (branch `dashboard-ux-gaps`); deploy to
+   the Pi with `git pull` + `sudo systemctl restart ruuvi-dashboard.service`.
+7. Ship backups off-Pi, now that local daily backups are confirmed working
+   on real hardware.
+8. Migrate the Pi deployment from the `mafuko` user to the documented
+   dedicated `ruuvi` service account, and re-run Phase 7's reboot/
+   restart-on-failure test against that corrected setup.
+9. **Per-device alerting** (see above) — bigger feature, needs a
+   brainstorming/design pass before implementation.
