@@ -24,19 +24,31 @@
            data-mac="{{ row.mac }}"
            data-timestamp="{{ row.timestamp_iso }}">
 
-            <div class="flex justify-between items-center mb-2">
-                <h2 class="text-xl font-semibold">{{ row.name }}</h2>
-                <span class="text-sm text-gray-400 updated-ago">just now</span>
+            <div class="flex justify-between items-start gap-2 mb-2">
+                <div class="js-fade min-w-0">
+                    <h2 class="text-xl font-semibold leading-tight">{{ row.location or row.name }}</h2>
+                    {% if row.location %}
+                    <div class="text-sm text-gray-400">{{ row.name }}</div>
+                    {% endif %}
+                </div>
+                <span class="text-sm text-gray-400 whitespace-nowrap updated-ago">just now</span>
+                <span class="hidden text-xs whitespace-nowrap rounded-full px-2 py-0.5 bg-amber-900 text-amber-300 stale-tag"></span>
             </div>
 
-            <div class="text-4xl font-bold">
-                <span class="js-temperature">{{ row.temperature|round(1) }}</span>°C
-            </div>
+            <div class="js-fade">
+                <div class="text-4xl font-bold">
+                    <span class="js-temperature">{{ row.temperature|round(1) }}</span>°C
+                </div>
 
-            <div class="mt-3 text-sm text-gray-300 space-y-1">
-                <div>💧 <span class="js-humidity">{{ row.humidity|round(1) }}</span> %</div>
-                <div>🌡 <span class="js-pressure">{{ row.pressure|round(1) }}</span> hPa</div>
-                <div>🔋 <span class="js-battery">{{ row.battery|round(2) }}</span> V</div>
+                <div class="mt-3 flex justify-between items-end text-sm text-gray-300">
+                    <div class="space-y-1">
+                        <div>💧 <span class="js-humidity">{{ row.humidity|round(1) }}</span> %</div>
+                        <div>🌡 <span class="js-pressure">{{ row.pressure|round(1) }}</span> hPa</div>
+                    </div>
+                    <span class="js-battery whitespace-nowrap rounded-full px-2 py-0.5 {{ 'bg-amber-900 text-amber-300' if row.battery_low else 'bg-gray-700 text-gray-300' }}">
+                        🔋 {{ '%.2f V'|format(row.battery / 1000) if row.battery is not none else '—' }}{{ ' · Low' if row.battery_low }}
+                    </span>
+                </div>
             </div>
 
         </a>
@@ -49,17 +61,48 @@
 </div>
 
 <script>
-function formatAgo(isoTimestamp) {
-    const seconds = Math.max(0, Math.floor((Date.now() - new Date(isoTimestamp).getTime()) / 1000));
+const STALE_AFTER_SECONDS = 3600;
+const FADE_CLASSES = ['grayscale', 'opacity-40'];
+const BATTERY_NORMAL_CLASSES = ['bg-gray-700', 'text-gray-300'];
+const BATTERY_LOW_CLASSES = ['bg-amber-900', 'text-amber-300'];
+
+function secondsSince(isoTimestamp) {
+    return Math.max(0, Math.floor((Date.now() - new Date(isoTimestamp).getTime()) / 1000));
+}
+
+function formatAgo(seconds) {
     if (seconds < 60) return `Updated ${seconds}s ago`;
     if (seconds < 3600) return `Updated ${Math.floor(seconds / 60)}m ago`;
     return `Updated ${Math.floor(seconds / 3600)}h ago`;
 }
 
+function formatStale(seconds) {
+    const hours = Math.floor(seconds / 3600);
+    if (hours < 48) return `No data · ${hours}h`;
+    return `No data · ${Math.floor(hours / 24)}d`;
+}
+
 function tickAgoLabels() {
     document.querySelectorAll('#sensor-grid a').forEach(card => {
-        card.querySelector('.updated-ago').textContent = formatAgo(card.dataset.timestamp);
+        const seconds = secondsSince(card.dataset.timestamp);
+        const stale = seconds > STALE_AFTER_SECONDS;
+        card.querySelector('.updated-ago').textContent = formatAgo(seconds);
+        card.querySelector('.updated-ago').classList.toggle('hidden', stale);
+        const tag = card.querySelector('.stale-tag');
+        tag.textContent = stale ? formatStale(seconds) : '';
+        tag.classList.toggle('hidden', !stale);
+        card.querySelectorAll('.js-fade').forEach(el => {
+            FADE_CLASSES.forEach(c => el.classList.toggle(c, stale));
+        });
     });
+}
+
+function renderBattery(card, batteryMv, batteryLow) {
+    const pill = card.querySelector('.js-battery');
+    const volts = batteryMv == null ? '—' : `${(batteryMv / 1000).toFixed(2)} V`;
+    pill.textContent = `🔋 ${volts}${batteryLow ? ' · Low' : ''}`;
+    BATTERY_NORMAL_CLASSES.forEach(c => pill.classList.toggle(c, !batteryLow));
+    BATTERY_LOW_CLASSES.forEach(c => pill.classList.toggle(c, batteryLow));
 }
 
 async function refreshLatest() {
@@ -74,7 +117,7 @@ async function refreshLatest() {
             card.querySelector('.js-temperature').textContent = r.temperature.toFixed(1);
             card.querySelector('.js-humidity').textContent = r.humidity.toFixed(1);
             card.querySelector('.js-pressure').textContent = r.pressure.toFixed(1);
-            card.querySelector('.js-battery').textContent = r.battery.toFixed(2);
+            renderBattery(card, r.battery, r.battery_low);
         });
         tickAgoLabels();
     } catch (e) {
