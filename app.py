@@ -5,6 +5,7 @@ from werkzeug.security import check_password_hash
 from config import SECRET_KEY, ADMIN_USERNAME, ADMIN_PASSWORD_HASH
 from datetime import datetime, timedelta, timezone
 from db import get_connection
+from battery import is_battery_low
 from functools import wraps
 
 RANGE_HOURS = {
@@ -42,7 +43,7 @@ def since_for_range(range_key):
 
 def latest_readings():
     query = """
-        SELECT d.mac, d.name, m.temperature, m.humidity, m.pressure, m.battery, m.timestamp
+        SELECT d.mac, d.name, d.location, m.temperature, m.humidity, m.pressure, m.battery, m.timestamp
         FROM measurements m
         JOIN devices d ON m.mac = d.mac
         INNER JOIN (
@@ -86,7 +87,11 @@ def logout():
 def index():
     rows = latest_readings()
     data = [
-        {**dict(row), "timestamp_iso": to_iso_utc(row["timestamp"])}
+        {
+            **dict(row),
+            "timestamp_iso": to_iso_utc(row["timestamp"]),
+            "battery_low": is_battery_low(row["battery"], row["temperature"]),
+        }
         for row in rows
     ]
     return render_template("index.html", data=data)
@@ -99,10 +104,12 @@ def api_latest():
         {
             "mac": row["mac"],
             "name": row["name"],
+            "location": row["location"],
             "temperature": row["temperature"],
             "humidity": row["humidity"],
             "pressure": row["pressure"],
             "battery": row["battery"],
+            "battery_low": is_battery_low(row["battery"], row["temperature"]),
             "timestamp": to_iso_utc(row["timestamp"]),
         }
         for row in rows
