@@ -28,11 +28,12 @@ around `db.init_db()`, not a stale duplicate schema.
 
 **Phase 4 (collector)** — implemented: filters against `get_allowed_macs()`,
 error-handles and logs per-reading failures without crashing, keeps running.
-One open item is already tracked in the roadmap doc itself: unauthorized/
-unregistered nearby MACs log a warning on *every* BLE advertisement (every
-few seconds) instead of being throttled, and `get_data_async()` could
-instead be called with `macs=list(allowed_macs)` to filter at the library
-level rather than after the fact.
+The roadmap's log-spam concern (unregistered nearby tags logged on *every*
+BLE advertisement) is fixed: each unregistered MAC is logged at INFO once,
+then at most hourly (`UnregisteredLogThrottle` in `collector.py`).
+Filtering via `get_data_async(macs=...)` was rejected because the MAC list
+is fixed when the scan starts, which would undo the periodic allowed-MAC
+reload.
 
 **Phase 5 (dashboard)** — implemented: login/session, overview grid
 (`index.html`, dark theme, auto-refreshes every 30s via `/api/latest` plus a
@@ -155,9 +156,15 @@ Roughly in order of what unblocks real-world use vs. what's polish:
 1. ~~Fix the collector reload bug~~ — done (branch
    `fix-collector-device-reload`); deploy to the Pi with `git pull` +
    `sudo systemctl restart ruuvi-collector.service`.
-2. **Decide the collector's log-spam fix** — throttle unauthorized-MAC
-   warnings or switch to `get_data_async(macs=...)`. Already scoped in the
-   roadmap; small, contained change.
+2. ~~Collector log spam~~ — done (branch
+   `polish-labels-connections-logging`, which also sorts overview cards by
+   location, leads the sensor page with location, and makes
+   `db.get_connection()` close its connections).
+2b. **Handle missing sensor values.** `ruuvitag_sensor` can report `None`
+   for temperature/humidity/pressure. The overview template then fails
+   (`None|round` → internal error), and the sensor page writes Python's
+   `None` into its JavaScript, so its whole chart silently fails to draw.
+   Small fix; worth doing before anything Internet-facing.
 3. **Resolve the login/`users` table gap above** before building anything
    else on top of auth.
 4. **CSRF protection** on the device-management and login forms — needed

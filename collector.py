@@ -8,6 +8,25 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger("collector")
 
 ALLOWED_MACS_REFRESH_SECONDS = 30
+UNREGISTERED_LOG_INTERVAL_SECONDS = 3600
+
+
+class UnregisteredLogThrottle:
+    """Rate-limits the "unregistered tag" log line per MAC: tags broadcast every
+    second or so, and logging each one floods the journal and wears the SD card."""
+
+    def __init__(self, interval_seconds, clock=time.monotonic):
+        self._interval_seconds = interval_seconds
+        self._clock = clock
+        self._last_logged = {}
+
+    def should_log(self, mac):
+        now = self._clock()
+        last = self._last_logged.get(mac)
+        if last is not None and now - last < self._interval_seconds:
+            return False
+        self._last_logged[mac] = now
+        return True
 
 
 class AllowedMacs:
@@ -62,12 +81,18 @@ async def main():
     allowed_macs = AllowedMacs(get_allowed_macs, ALLOWED_MACS_REFRESH_SECONDS)
     logger.info(f"Allowed MACs: {allowed_macs.get()}")
 
+    unregistered_log = UnregisteredLogThrottle(UNREGISTERED_LOG_INTERVAL_SECONDS)
+
     logger.info("Collector running...")
 
     # 3️⃣ Start receiving RuuviTag data
     async for mac, data in RuuviTagSensor.get_data_async():
         if mac not in allowed_macs.get():
-            logger.warning(f"Unauthorized MAC: {mac} - skipping")
+            if unregistered_log.should_log(mac):
+                logger.info(
+                    f"Ignoring unregistered RuuviTag {mac} - add it under Devices to collect its data "
+                    f"(repeated at most hourly)"
+                )
             continue
 
         try:
