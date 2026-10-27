@@ -26,7 +26,7 @@
                 <label class="flex items-center gap-2 bg-gray-700 rounded px-3 py-1 cursor-pointer">
                     <span class="color-swatch w-3 h-3 rounded-full inline-block"></span>
                     <input type="checkbox" class="sensor-checkbox" value="{{ device.mac }}" checked>
-                    <span>{{ device.name }}</span>
+                    <span>{{ device.label }}</span>
                 </label>
                 {% endfor %}
             </div>
@@ -122,7 +122,7 @@ async function reloadChart() {
     const body = await res.json();
 
     chart.data.datasets = body.series.map(s => ({
-        label: s.name,
+        label: s.label,
         data: s.points.map(p => ({ x: Date.parse(p.t), y: p.v })),
         borderColor: COLORS[macColorIndex[s.mac] % COLORS.length],
         tension: 0.3,
