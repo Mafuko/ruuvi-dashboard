@@ -97,17 +97,16 @@ actually needed, or was `users` premature scaffolding for something the
 single-admin model already covers? If multi-user login is wanted, `/login`
 needs to look the username up in `users` instead of `config.py`.
 
-## Bug found during Pi re-deployment (2026-10-26): new devices need a collector restart
+## Bug found during Pi re-deployment (2026-10-26): new devices need a collector restart — fixed
 
-`collector.py` loads the allowed-MAC list into memory once at startup
-(`allowed_macs = get_allowed_macs()`) and never re-reads it. Adding a device
-via the dashboard while the collector is already running has no effect
-until `sudo systemctl restart ruuvi-collector.service` runs — until then the
-new MAC's broadcasts are logged as `Unauthorized MAC ... skipping` even
-though the device row now exists and is active. This isn't documented
-anywhere and should actually be fixed (e.g. reload the allowed-MAC set
-periodically, or re-query it per batch/callback) rather than just worked
-around.
+`collector.py` used to load the allowed-MAC list once at startup and never
+re-read it, so devices added (or deactivated) in the dashboard had no effect
+until `sudo systemctl restart ruuvi-collector.service`. Fixed on branch
+`fix-collector-device-reload`: the `AllowedMacs` class in `collector.py`
+re-reads the `devices` table at most every 30 seconds
+(`ALLOWED_MACS_REFRESH_SECONDS`), logs `Allowed MACs changed: ...` when the
+set changes, and keeps the previous list if a reload fails. Covered by
+`tests/test_collector.py`.
 
 ## Dashboard UX gaps noticed during real-world use (2026-10-26) — done
 
@@ -149,8 +148,9 @@ notification delivery mechanism, etc.).
 
 Roughly in order of what unblocks real-world use vs. what's polish:
 
-1. **Fix the collector reload bug above** — new devices should start being
-   collected without a manual service restart.
+1. ~~Fix the collector reload bug~~ — done (branch
+   `fix-collector-device-reload`); deploy to the Pi with `git pull` +
+   `sudo systemctl restart ruuvi-collector.service`.
 2. **Decide the collector's log-spam fix** — throttle unauthorized-MAC
    warnings or switch to `get_data_async(macs=...)`. Already scoped in the
    roadmap; small, contained change.
