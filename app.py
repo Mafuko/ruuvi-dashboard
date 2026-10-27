@@ -17,6 +17,7 @@ RANGE_HOURS = {
 }
 DEFAULT_RANGE = "24h"
 METRIC_COLUMNS = {"temperature", "humidity", "pressure"}
+DEVICE_LABEL_SQL = "COALESCE(NULLIF(d.location, ''), d.name)"
 MAC_RE = re.compile(r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
 
 def normalize_mac(mac):
@@ -153,7 +154,7 @@ def sensor(mac):
 def history():
     with get_connection() as conn:
         devices = conn.execute(
-            "SELECT mac, name FROM devices WHERE active = 1 ORDER BY name"
+            f"SELECT d.mac, {DEVICE_LABEL_SQL} AS label FROM devices d WHERE d.active = 1 ORDER BY label"
         ).fetchall()
 
     return render_template(
@@ -181,11 +182,11 @@ def api_history():
     placeholders = ",".join("?" for _ in macs)
     # metric is whitelisted against METRIC_COLUMNS above, safe to interpolate as a column name
     query = f"""
-        SELECT d.mac, d.name, m.timestamp, m.{metric} as value
+        SELECT d.mac, {DEVICE_LABEL_SQL} AS label, m.timestamp, m.{metric} as value
         FROM measurements m
         JOIN devices d ON m.mac = d.mac
         WHERE m.mac IN ({placeholders}) AND m.timestamp >= ?
-        ORDER BY d.name, m.timestamp
+        ORDER BY label, m.timestamp
     """
 
     with get_connection() as conn:
@@ -193,7 +194,7 @@ def api_history():
 
     series = {}
     for row in rows:
-        entry = series.setdefault(row["mac"], {"mac": row["mac"], "name": row["name"], "points": []})
+        entry = series.setdefault(row["mac"], {"mac": row["mac"], "label": row["label"], "points": []})
         entry["points"].append({"t": to_iso_utc(row["timestamp"]), "v": row["value"]})
 
     return jsonify({"series": list(series.values())})

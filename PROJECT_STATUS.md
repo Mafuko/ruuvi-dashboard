@@ -124,6 +124,10 @@ Fixed on branch `dashboard-ux-gaps` (overview page only):
    gray and shows an amber "No data · Nh" (or "Nd") tag. Computed in the
    browser, so it updates live while the page is open.
 
+4. **History page** (branch `history-show-location`): the sensor picker and
+   chart legend label each device by Location (falling back to Name), sorted
+   by that label. Covered by `tests/test_app_history.py`.
+
 Not covered: the per-sensor and Devices pages don't show these indicators;
 user-configurable thresholds belong to per-device alerting (below).
 
