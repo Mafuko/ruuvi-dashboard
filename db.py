@@ -1,15 +1,23 @@
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 from config import DATABASE_PATH
 
 # Database file path
 DATABASE = Path(__file__).parent / DATABASE_PATH
 
+@contextmanager
 def get_connection():
-    """Returns a SQLite connection; row_factory enables dict-style row access."""
+    """Yields a SQLite connection (dict-style rows) that commits on success,
+    rolls back on error, and is always closed afterwards — sqlite3's own
+    `with conn:` only does the commit/rollback part."""
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
 
 def init_db():
     """Creates the required tables if they don't already exist."""

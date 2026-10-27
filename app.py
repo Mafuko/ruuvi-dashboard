@@ -43,7 +43,7 @@ def since_for_range(range_key):
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 def latest_readings():
-    query = """
+    query = f"""
         SELECT d.mac, d.name, d.location, m.temperature, m.humidity, m.pressure, m.battery, m.timestamp
         FROM measurements m
         JOIN devices d ON m.mac = d.mac
@@ -54,7 +54,7 @@ def latest_readings():
         ) latest
         ON m.mac = latest.mac AND m.timestamp = latest.max_ts
         WHERE d.active = 1
-        ORDER BY d.name
+        ORDER BY {DEVICE_LABEL_SQL}
     """
     with get_connection() as conn:
         return conn.execute(query).fetchall()
@@ -133,14 +133,15 @@ def sensor(mac):
 
     with get_connection() as conn:
         rows = conn.execute(query, (mac, since)).fetchall()
-        name = conn.execute(
-            "SELECT name FROM devices WHERE mac = ?", (mac,)
+        device = conn.execute(
+            "SELECT name, location FROM devices WHERE mac = ?", (mac,)
         ).fetchone()
 
     return render_template(
         "sensor.html",
         mac=mac,
-        name=name["name"] if name else mac,
+        name=device["name"] if device else mac,
+        location=device["location"] if device else None,
         timestamps=[r["timestamp"] for r in rows],
         temperatures=[r["temperature"] for r in rows],
         humidities=[r["humidity"] for r in rows],

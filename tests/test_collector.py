@@ -1,6 +1,6 @@
 import unittest
 
-from collector import AllowedMacs
+from collector import AllowedMacs, UnregisteredLogThrottle
 
 
 class FakeClock:
@@ -69,6 +69,32 @@ class AllowedMacsTests(unittest.TestCase):
         self.clock.now = 60
         with self.assertLogs("collector", level="INFO"):
             self.assertIn("AA:AA:AA:AA:AA:02", self.allowed.get())
+
+
+class UnregisteredLogThrottleTests(unittest.TestCase):
+    def setUp(self):
+        self.clock = FakeClock()
+        self.throttle = UnregisteredLogThrottle(interval_seconds=3600, clock=self.clock)
+
+    def test_logs_first_sighting(self):
+        self.assertTrue(self.throttle.should_log("AA:AA:AA:AA:AA:01"))
+
+    def test_suppresses_repeats_within_interval(self):
+        self.throttle.should_log("AA:AA:AA:AA:AA:01")
+        self.clock.now = 3599
+        self.assertFalse(self.throttle.should_log("AA:AA:AA:AA:AA:01"))
+
+    def test_logs_again_after_interval(self):
+        self.throttle.should_log("AA:AA:AA:AA:AA:01")
+        self.clock.now = 3600
+        self.assertTrue(self.throttle.should_log("AA:AA:AA:AA:AA:01"))
+        self.clock.now = 3601
+        self.assertFalse(self.throttle.should_log("AA:AA:AA:AA:AA:01"))
+
+    def test_tracks_each_mac_separately(self):
+        self.throttle.should_log("AA:AA:AA:AA:AA:01")
+        self.clock.now = 10
+        self.assertTrue(self.throttle.should_log("AA:AA:AA:AA:AA:02"))
 
 
 if __name__ == "__main__":
