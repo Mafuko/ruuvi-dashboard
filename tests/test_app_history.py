@@ -9,9 +9,7 @@ from app import app
 
 class HistoryLabelTests(unittest.TestCase):
     def setUp(self):
-        # db.get_connection()'s `with` block commits but doesn't close, so on Windows
-        # the temp DB can still be open at cleanup time.
-        tmp = TemporaryDirectory(ignore_cleanup_errors=True)
+        tmp = TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         patcher = patch.object(db, "DATABASE", Path(tmp.name) / "test.db")
         patcher.start()
